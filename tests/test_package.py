@@ -51,6 +51,7 @@ class TestPackageImports:
         modules = [
             "cooperbench",
             "cooperbench.cli",
+            "cooperbench.llm_config",
             "cooperbench.utils",
             # Runner package
             "cooperbench.runner",

@@ -44,6 +44,9 @@ def run(
     task_id: int | None = None,
     features: list[int] | None = None,
     model_name: str = "vertex_ai/gemini-3-flash-preview",
+    llm_provider: str | None = None,
+    llm_endpoint: str | None = None,
+    llm_api_version: str | None = None,
     agent: str = "mini_swe_agent",
     concurrency: int = 20,
     force: bool = False,
@@ -65,6 +68,9 @@ def run(
         task_id: Filter by specific task ID
         features: Specific feature pair [f1, f2] to run
         model_name: LLM model (e.g., "gpt-4o", "vertex_ai/gemini-3-flash-preview")
+        llm_provider: Optional provider selector ("azure" or "vllm")
+        llm_endpoint: Optional provider endpoint URL
+        llm_api_version: Optional provider API version
         agent: Agent framework to use (default: "mini_swe")
         concurrency: Max parallel tasks
         force: Rerun even if results exist
@@ -92,7 +98,17 @@ def run(
     is_solo = setting == "solo"
 
     _print_header(
-        run_name, setting, tasks, agent, model_name, concurrency, is_single, is_solo, git_enabled, messaging_enabled
+        run_name,
+        setting,
+        tasks,
+        agent,
+        model_name,
+        llm_provider,
+        concurrency,
+        is_single,
+        is_solo,
+        git_enabled,
+        messaging_enabled,
     )
 
     # Solo mode doesn't need Redis or git server
@@ -103,7 +119,18 @@ def run(
     log_dir = Path("logs") / run_name
     log_dir.mkdir(parents=True, exist_ok=True)
 
-    _save_config(log_dir, run_name, agent, model_name, setting, concurrency, len(tasks))
+    _save_config(
+        log_dir,
+        run_name,
+        agent,
+        model_name,
+        llm_provider,
+        llm_endpoint,
+        llm_api_version,
+        setting,
+        concurrency,
+        len(tasks),
+    )
 
     results_list = []
     completed = 0
@@ -120,6 +147,9 @@ def run(
                 run_name=run_name,
                 agent_name=agent,
                 model_name=model_name,
+                llm_provider=llm_provider,
+                llm_endpoint=llm_endpoint,
+                llm_api_version=llm_api_version,
                 force=force,
                 quiet=not is_single,
                 backend=backend,
@@ -133,6 +163,9 @@ def run(
                 run_name=run_name,
                 agent_name=agent,
                 model_name=model_name,
+                llm_provider=llm_provider,
+                llm_endpoint=llm_endpoint,
+                llm_api_version=llm_api_version,
                 redis_url=redis_url,
                 force=force,
                 quiet=not is_single,
@@ -160,7 +193,7 @@ def run(
                 if run_info:
                     from cooperbench.eval.evaluate import _evaluate_single
 
-                    eval_result = _evaluate_single(run_info, force=force)
+                    eval_result = _evaluate_single(run_info, force=force, backend=backend)
                     if eval_result:
                         stats = _process_eval_result(eval_result, tasks[0])
                         if stats:
@@ -171,7 +204,15 @@ def run(
     else:
         # Multiple tasks - show progress
         completed, skipped, failed, total_cost, results_list, eval_stats = _run_with_progress(
-            tasks, execute_task, concurrency, auto_eval, eval_concurrency, setting, run_name, force
+            tasks,
+            execute_task,
+            concurrency,
+            auto_eval,
+            eval_concurrency,
+            setting,
+            run_name,
+            force,
+            backend,
         )
 
     # Summary
@@ -201,6 +242,7 @@ def _print_header(
     tasks: list,
     agent: str,
     model_name: str,
+    llm_provider: str | None,
     concurrency: int,
     is_single: bool,
     is_solo: bool,
@@ -224,19 +266,33 @@ def _print_header(
         console.print(f"[dim]tasks:[/dim] {len(tasks)} [dim]concurrency:[/dim] {concurrency}")
     console.print(f"[dim]agent:[/dim] {agent}")
     console.print(f"[dim]model:[/dim] {model_name}")
+    if llm_provider:
+        console.print(f"[dim]provider:[/dim] {llm_provider}")
     if not is_solo:
         console.print(f"[dim]tools:[/dim] {tools_str}")
     console.print()
 
 
 def _save_config(
-    log_dir: Path, run_name: str, agent: str, model_name: str, setting: str, concurrency: int, total_tasks: int
+    log_dir: Path,
+    run_name: str,
+    agent: str,
+    model_name: str,
+    llm_provider: str | None,
+    llm_endpoint: str | None,
+    llm_api_version: str | None,
+    setting: str,
+    concurrency: int,
+    total_tasks: int,
 ) -> None:
     """Save run configuration."""
     run_config = {
         "run_name": run_name,
         "agent_framework": agent,
         "model": model_name,
+        "provider": llm_provider,
+        "endpoint": llm_endpoint,
+        "api_version": llm_api_version,
         "setting": setting,
         "concurrency": concurrency,
         "total_tasks": total_tasks,
@@ -335,6 +391,7 @@ def _run_with_progress(
     setting: str,
     run_name: str,
     force: bool,
+    backend: str,
 ) -> tuple:
     """Run multiple tasks with progress display and optional inline evaluation."""
     from cooperbench.eval.evaluate import _evaluate_single
@@ -408,7 +465,12 @@ def _run_with_progress(
                         if auto_eval and status in ("done", "skip") and eval_executor:
                             run_info = _build_run_info(result, task_info, setting, run_name)
                             if run_info:
-                                eval_future = eval_executor.submit(_evaluate_single, run_info, force)
+                                eval_future = eval_executor.submit(
+                                    _evaluate_single,
+                                    run_info,
+                                    force,
+                                    backend,
+                                )
                                 eval_futures[eval_future] = (task_info, result, task_name, feat_str)
                             progress.console.print(f"{status_display} {task_name} [dim][{feat_str}][/dim]")
                         else:

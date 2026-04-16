@@ -18,6 +18,9 @@ def execute_solo(
     run_name: str,
     agent_name: str = "mini_swe_agent",
     model_name: str = "vertex_ai/gemini-3-flash-preview",
+    llm_provider: str | None = None,
+    llm_endpoint: str | None = None,
+    llm_api_version: str | None = None,
     force: bool = False,
     quiet: bool = False,
     backend: str = "modal",
@@ -49,6 +52,9 @@ def execute_solo(
             features=features,
             agent_name=agent_name,
             model_name=model_name,
+            llm_provider=llm_provider,
+            llm_endpoint=llm_endpoint,
+            llm_api_version=llm_api_version,
             quiet=quiet,
             backend=backend,
             agent_config=agent_config,
@@ -86,6 +92,7 @@ def execute_solo(
                 "features": features,
                 "agent_id": "solo",
                 "model": model_name,
+                "provider": llm_provider,
                 "status": result.get("status"),
                 "cost": result.get("cost"),
                 "steps": result.get("steps"),
@@ -105,6 +112,9 @@ def execute_solo(
         "run_name": run_name,
         "agent_framework": agent_name,
         "model": model_name,
+        "provider": llm_provider,
+        "endpoint": llm_endpoint,
+        "api_version": llm_api_version,
         "started_at": start_time.isoformat(),
         "ended_at": end_time.isoformat(),
         "duration_seconds": duration,
@@ -143,6 +153,9 @@ def _spawn_solo_agent(
     features: list[int],
     agent_name: str,
     model_name: str,
+    llm_provider: str | None = None,
+    llm_endpoint: str | None = None,
+    llm_api_version: str | None = None,
     quiet: bool = False,
     backend: str = "modal",
     agent_config: str | None = None,
@@ -176,7 +189,15 @@ def _spawn_solo_agent(
         console.print("  [dim]solo[/dim] starting...")
 
     # Load agent config file if provided
-    config = {"backend": backend}
+    config = {
+        "backend": backend,
+        "llm": {
+            "provider": llm_provider,
+            "endpoint": llm_endpoint,
+            "api_version": llm_api_version,
+            "model": model_name,
+        },
+    }
     if agent_config:
         config_path = Path(agent_config)
         if config_path.exists():
@@ -186,6 +207,12 @@ def _spawn_solo_agent(
                     config.update(agent_config_dict)
         else:
             raise FileNotFoundError(f"Agent config file not found: {agent_config}")
+    config["llm"] = {
+        "provider": llm_provider,
+        "endpoint": llm_endpoint,
+        "api_version": llm_api_version,
+        "model": model_name,
+    }
 
     # Use the agent framework adapter
     runner = get_runner(agent_name)

@@ -92,6 +92,7 @@ class DockerBackend:
         # Run container in detached mode with a long-running command
         container = client.containers.run(
             image=image,
+            entrypoint=[""],
             command="sleep infinity",
             detach=True,
             working_dir=workdir,

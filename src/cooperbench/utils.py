@@ -30,7 +30,7 @@ def get_image_name(repo_name: str, task_id: int) -> str:
     return f"{REGISTRY}/{IMAGE_PREFIX}-{repo_clean}:task{task_id}"
 
 
-def clean_model_name(model: str) -> str:
+def clean_model_name(model: str, provider: str | None = None) -> str:
     """Clean model name for use in experiment name.
 
     Examples:
@@ -45,7 +45,11 @@ def clean_model_name(model: str) -> str:
     model = re.sub(r"-(preview|latest|turbo)$", "", model)
     # Replace non-alphanumeric with dash
     model = re.sub(r"[^a-zA-Z0-9]+", "-", model)
-    return model.strip("-").lower()
+    cleaned = model.strip("-").lower()
+    if provider:
+        provider_clean = re.sub(r"[^a-zA-Z0-9]+", "-", provider).strip("-").lower()
+        return f"{provider_clean}-{cleaned}"
+    return cleaned
 
 
 T = TypeVar("T")

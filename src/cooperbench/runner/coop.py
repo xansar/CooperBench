@@ -23,6 +23,9 @@ def execute_coop(
     run_name: str,
     agent_name: str = "mini_swe_agent",
     model_name: str = "vertex_ai/gemini-3-flash-preview",
+    llm_provider: str | None = None,
+    llm_endpoint: str | None = None,
+    llm_api_version: str | None = None,
     redis_url: str = "redis://localhost:6379",
     force: bool = False,
     quiet: bool = False,
@@ -91,6 +94,9 @@ def execute_coop(
                 feature_id=feature_id,
                 agent_name=agent_name,
                 model_name=model_name,
+                llm_provider=llm_provider,
+                llm_endpoint=llm_endpoint,
+                llm_api_version=llm_api_version,
                 agent_id=agent_id,
                 agents=agents,
                 redis_url=namespaced_redis if messaging_enabled and n_agents > 1 else None,
@@ -167,6 +173,7 @@ def execute_coop(
                     "feature_id": fid,
                     "agent_id": agent_id,
                     "model": model_name,
+                    "provider": llm_provider,
                     "status": r.get("status"),
                     "cost": r.get("cost"),
                     "steps": r.get("steps"),
@@ -186,6 +193,9 @@ def execute_coop(
         "run_name": run_name,
         "agent_framework": agent_name,
         "model": model_name,
+        "provider": llm_provider,
+        "endpoint": llm_endpoint,
+        "api_version": llm_api_version,
         "started_at": start_time.isoformat(),
         "ended_at": end_time.isoformat(),
         "duration_seconds": duration,
@@ -229,6 +239,9 @@ def _spawn_agent(
     feature_id: int,
     agent_name: str,
     model_name: str,
+    llm_provider: str | None = None,
+    llm_endpoint: str | None = None,
+    llm_api_version: str | None = None,
     agent_id: str | None = None,
     agents: list[str] | None = None,
     redis_url: str | None = None,
@@ -267,7 +280,16 @@ def _spawn_agent(
 
     # Load agent config file if provided
     # run_id is passed for agents that need to coordinate shared infrastructure
-    config = {"backend": backend, "run_id": redis_url.split("#run:")[1] if redis_url and "#run:" in redis_url else None}
+    config = {
+        "backend": backend,
+        "run_id": redis_url.split("#run:")[1] if redis_url and "#run:" in redis_url else None,
+        "llm": {
+            "provider": llm_provider,
+            "endpoint": llm_endpoint,
+            "api_version": llm_api_version,
+            "model": model_name,
+        },
+    }
     if git_network:
         config["git_network"] = git_network
     if agent_config:
@@ -279,6 +301,12 @@ def _spawn_agent(
                     config.update(agent_config_dict)
         else:
             raise FileNotFoundError(f"Agent config file not found: {agent_config}")
+    config["llm"] = {
+        "provider": llm_provider,
+        "endpoint": llm_endpoint,
+        "api_version": llm_api_version,
+        "model": model_name,
+    }
 
     # Use the agent framework adapter
     runner = get_runner(agent_name)

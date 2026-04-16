@@ -94,3 +94,118 @@ class TestRunOutputStructure:
         assert "agent_framework" in loaded
         assert "model" in loaded
         assert "setting" in loaded
+
+
+class TestAutoEvalBackend:
+    """Tests for auto-eval backend inheritance."""
+
+    def test_single_task_auto_eval_uses_run_backend(self, tmp_path, monkeypatch):
+        """Single-task auto-eval should inherit the run backend."""
+        monkeypatch.chdir(tmp_path)
+
+        task = {"repo": "llama_index_task", "task_id": 17244, "features": [1, 2]}
+        result = {
+            "result": {"status": "Submitted", "cost": 0, "steps": 0, "patch": ""},
+            "total_cost": 0,
+            "duration": 0,
+            "log_dir": str(tmp_path / "logs" / "test-run" / "solo" / "llama_index_task" / "17244" / "f1_f2"),
+        }
+
+        with patch("cooperbench.runner.core.discover_tasks", return_value=[task]):
+            with patch("cooperbench.runner.core.execute_solo", return_value=result):
+                with patch("cooperbench.runner.core._print_single_result"):
+                    with patch("cooperbench.runner.core._save_summary"):
+                        with patch("cooperbench.runner.core._print_summary"):
+                            with patch(
+                                "cooperbench.utils.get_run_totals",
+                                return_value={"total_cost": 0, "wall_time": 0, "run_time": 0},
+                            ):
+                                with patch(
+                                    "cooperbench.eval.evaluate._evaluate_single",
+                                    return_value={"both_passed": True},
+                                ) as mock_eval:
+                                    run(
+                                        run_name="test-run",
+                                        setting="solo",
+                                        backend="docker",
+                                        auto_eval=True,
+                                    )
+
+        _, kwargs = mock_eval.call_args
+        assert kwargs["backend"] == "docker"
+
+    def test_multi_task_auto_eval_uses_run_backend(self, tmp_path, monkeypatch):
+        """Multi-task auto-eval should pass through the run backend."""
+        monkeypatch.chdir(tmp_path)
+
+        tasks = [
+            {"repo": "llama_index_task", "task_id": 17244, "features": [1, 2]},
+            {"repo": "llama_index_task", "task_id": 17244, "features": [1, 3]},
+        ]
+        results = [
+            {
+                "total_cost": 0,
+                "log_dir": str(tmp_path / "logs" / "test-run" / "solo" / "llama_index_task" / "17244" / "f1_f2"),
+            },
+            {
+                "total_cost": 0,
+                "log_dir": str(tmp_path / "logs" / "test-run" / "solo" / "llama_index_task" / "17244" / "f1_f3"),
+            },
+        ]
+
+        with patch("cooperbench.runner.core.discover_tasks", return_value=tasks):
+            with patch("cooperbench.runner.core.execute_solo", side_effect=results):
+                with patch("cooperbench.runner.core._save_summary"):
+                    with patch("cooperbench.runner.core._print_summary"):
+                        with patch(
+                            "cooperbench.utils.get_run_totals",
+                            return_value={"total_cost": 0, "wall_time": 0, "run_time": 0},
+                        ):
+                            with patch(
+                                "cooperbench.eval.evaluate._evaluate_single",
+                                return_value={"both_passed": True},
+                            ) as mock_eval:
+                                run(
+                                    run_name="test-run",
+                                    setting="solo",
+                                    backend="docker",
+                                    auto_eval=True,
+                                    concurrency=1,
+                                    eval_concurrency=1,
+                                )
+
+        assert mock_eval.call_count == 2
+        for call in mock_eval.call_args_list:
+            assert call.kwargs == {}
+            assert call.args[2] == "docker"
+
+    def test_auto_eval_disabled_skips_evaluation(self, tmp_path, monkeypatch):
+        """Disabling auto-eval should avoid evaluation calls entirely."""
+        monkeypatch.chdir(tmp_path)
+
+        task = {"repo": "llama_index_task", "task_id": 17244, "features": [1, 2]}
+        result = {
+            "result": {"status": "Submitted", "cost": 0, "steps": 0, "patch": ""},
+            "total_cost": 0,
+            "duration": 0,
+            "log_dir": str(tmp_path / "logs" / "test-run" / "solo" / "llama_index_task" / "17244" / "f1_f2"),
+        }
+
+        with patch("cooperbench.runner.core.discover_tasks", return_value=[task]):
+            with patch("cooperbench.runner.core.execute_solo", return_value=result):
+                with patch("cooperbench.runner.core._print_single_result"):
+                    with patch("cooperbench.runner.core._save_summary"):
+                        with patch("cooperbench.runner.core._print_summary"):
+                            with patch(
+                                "cooperbench.utils.get_run_totals",
+                                return_value={"total_cost": 0, "wall_time": 0, "run_time": 0},
+                            ):
+                                with patch("cooperbench.eval.evaluate._evaluate_single") as mock_eval:
+                                    run(
+                                        run_name="test-run",
+                                        setting="solo",
+                                        backend="docker",
+                                        auto_eval=False,
+                                    )
+
+        mock_eval.assert_not_called()

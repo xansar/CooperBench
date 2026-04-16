@@ -255,4 +255,4 @@ git.pull()
 
 - **Modal**: Both agents use Modal for sandbox execution. Run `modal setup` to configure.
 - **Redis**: Required for inter-agent messaging. Run `docker run -p 6379:6379 redis:7`.
-- **LLM API Keys**: Set `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, etc. in environment.
+- **LLM Routing**: `mini_swe_agent` and `mini_swe_agent_v2` can be driven by CLI provider flags. Use `--provider azure --endpoint ... --api-version ... --model ...` for Azure OpenAI with framework-managed Entra ID auth, or `--provider vllm --endpoint ... --model ...` for local OpenAI-compatible vLLM endpoints.

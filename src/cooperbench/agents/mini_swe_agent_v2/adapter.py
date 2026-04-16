@@ -7,6 +7,7 @@ to conform to the AgentRunner interface used by CooperBench.
 import yaml
 
 from cooperbench.agents import AgentResult
+from cooperbench.llm_config import resolve_llm_config
 from cooperbench.agents.mini_swe_agent_v2.agents.default import DefaultAgent
 from cooperbench.agents.mini_swe_agent_v2.config import get_config_path
 from cooperbench.agents.mini_swe_agent_v2.connectors import GitConnector
@@ -50,6 +51,7 @@ class MiniSweAgentV2Runner:
         model_cfg = default_config.get("model", {})
         env_cfg = default_config.get("environment", {})
         backend = default_config.get("backend", "modal")
+        llm_cfg = default_config.get("llm", {})
 
         # Create environment based on backend
         env_kwargs = {
@@ -83,7 +85,22 @@ class MiniSweAgentV2Runner:
 
         # Create LLM model with send_message tool if messaging is enabled
         extra_tools = [SEND_MESSAGE_TOOL] if use_messaging else None
-        model = LitellmModel(model_name=model_name, extra_tools=extra_tools, **model_cfg)
+        resolved_llm = resolve_llm_config(
+            model=llm_cfg.get("model", model_name),
+            provider=llm_cfg.get("provider"),
+            endpoint=llm_cfg.get("endpoint"),
+            api_version=llm_cfg.get("api_version"),
+        )
+        merged_model_cfg = dict(model_cfg)
+        merged_model_cfg["model_kwargs"] = {
+            **model_cfg.get("model_kwargs", {}),
+            **resolved_llm.model_kwargs,
+        }
+        model = LitellmModel(
+            model_name=resolved_llm.model_name,
+            extra_tools=extra_tools,
+            **merged_model_cfg,
+        )
 
         # Setup git connector if enabled
         if git_enabled and git_server_url and agents:

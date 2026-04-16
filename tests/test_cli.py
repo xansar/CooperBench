@@ -16,6 +16,11 @@ class TestGenerateRunName:
         name = _generate_run_name("solo", "gpt-4o")
         assert name == "solo-msa-gpt-4o"
 
+    def test_name_generation_with_provider(self):
+        """Test that provider is included in auto-generated names."""
+        name = _generate_run_name("solo", "gpt-4o", provider="azure")
+        assert name == "solo-msa-azure-gpt-4o"
+
     def test_with_subset(self):
         """Test name generation with subset."""
         name = _generate_run_name("solo", "gpt-4o", subset="lite")
@@ -89,6 +94,33 @@ class TestCLI:
             with pytest.raises(SystemExit) as exc_info:
                 main()
             assert exc_info.value.code == 0
+
+    def test_cli_run_passes_provider_flags(self):
+        """Test run subcommand forwards provider-specific flags."""
+        from cooperbench.cli import main
+
+        argv = [
+            "cooperbench",
+            "run",
+            "-n",
+            "provider-test",
+            "--provider",
+            "azure",
+            "--endpoint",
+            "https://example.openai.azure.com",
+            "--api-version",
+            "2024-12-01-preview",
+            "--model",
+            "gpt-4.1-mini",
+        ]
+        with patch.object(sys, "argv", argv):
+            with patch("cooperbench.runner.run") as mock_run:
+                main()
+
+        _, kwargs = mock_run.call_args
+        assert kwargs["llm_provider"] == "azure"
+        assert kwargs["llm_endpoint"] == "https://example.openai.azure.com"
+        assert kwargs["llm_api_version"] == "2024-12-01-preview"
 
     def test_cli_eval_subcommand_exists(self):
         """Test eval subcommand exists."""

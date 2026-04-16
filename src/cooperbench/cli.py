@@ -24,6 +24,7 @@ def _generate_run_name(
     setting: str,
     model: str,
     agent: str = "mini_swe_agent",
+    provider: str | None = None,
     subset: str | None = None,
     repo: str | None = None,
     task: int | None = None,
@@ -44,7 +45,7 @@ def _generate_run_name(
 
     if git_enabled:
         parts.append("git")
-    parts.append(clean_model_name(model))
+    parts.append(clean_model_name(model, provider=provider))
     if subset:
         parts.append(subset)
     if repo:
@@ -121,6 +122,21 @@ def main():
         "--model",
         default="vertex_ai/gemini-3-flash-preview",
         help="LLM model to use (default: vertex_ai/gemini-3-flash-preview)",
+    )
+    run_parser.add_argument(
+        "--provider",
+        choices=["azure", "vllm"],
+        help="LLM provider routing mode for the selected model",
+    )
+    run_parser.add_argument(
+        "--endpoint",
+        help="Provider endpoint URL (Azure OpenAI endpoint or local vLLM endpoint)",
+    )
+    run_parser.add_argument(
+        "--api-version",
+        "--version",
+        dest="api_version",
+        help="Provider API version (required for Azure)",
     )
     run_parser.add_argument(
         "-a",
@@ -268,6 +284,7 @@ def _run_command(args):
             setting=args.setting,
             model=args.model,
             agent=args.agent,
+            provider=args.provider,
             subset=args.subset,
             repo=args.repo,
             task=args.task,
@@ -281,6 +298,9 @@ def _run_command(args):
         task_id=args.task,
         features=features,
         model_name=args.model,
+        llm_provider=args.provider,
+        llm_endpoint=args.endpoint,
+        llm_api_version=args.api_version,
         agent=args.agent,
         concurrency=args.concurrency,
         setting=args.setting,

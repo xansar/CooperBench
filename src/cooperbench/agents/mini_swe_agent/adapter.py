@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 import yaml
 
 from cooperbench.agents import AgentResult
+from cooperbench.llm_config import resolve_llm_config
 
 if TYPE_CHECKING:
     from cooperbench.agents.mini_swe_agent.environments.docker import DockerEnvironment
@@ -67,8 +68,10 @@ class MiniSweAgentRunner:
         if config is not None:
             default_config.update(config)
 
-        agent_config = default_config.get("agent", {})
+        agent_cfg = default_config.get("agent", {})
+        model_cfg = default_config.get("model", {})
         backend = default_config.get("backend", "modal")
+        llm_cfg = default_config.get("llm", {})
 
         # Create sandbox environment based on backend
         if backend == "docker":
@@ -118,7 +121,18 @@ class MiniSweAgentRunner:
         base_commit = base_commit_result.get("output", "").strip()
 
         # Create LLM model
-        model = LitellmModel(model_name=model_name)
+        resolved_llm = resolve_llm_config(
+            model=llm_cfg.get("model", model_name),
+            provider=llm_cfg.get("provider"),
+            endpoint=llm_cfg.get("endpoint"),
+            api_version=llm_cfg.get("api_version"),
+        )
+        merged_model_cfg = dict(model_cfg)
+        merged_model_cfg["model_kwargs"] = {
+            **model_cfg.get("model_kwargs", {}),
+            **resolved_llm.model_kwargs,
+        }
+        model = LitellmModel(model_name=resolved_llm.model_name, **merged_model_cfg)
 
         # Setup messaging connector if enabled
         comm = None
@@ -147,7 +161,7 @@ class MiniSweAgentRunner:
             env=env,
             comm=comm,
             agent_id=agent_id,
-            **agent_config,
+            **agent_cfg,
         )
         agent.extra_template_vars.update(extra_vars)
 
