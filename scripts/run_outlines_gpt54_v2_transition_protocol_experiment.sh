@@ -1,22 +1,22 @@
 #!/usr/bin/env bash
-# Run mini_swe_agent_v2 in solo mode on the Outlines prompt-transition subset.
+# Run mini_swe_agent_v2 on the Outlines repository tasks with GPT-5.4 and a cooperation protocol prompt.
 #
 # Defaults:
-#   subset:   outlines_prompt_transitions
-#   repo:     dottxt_ai_outlines_task
-#   model:    gpt-5.4
-#   provider: azure
-#   backend:  docker
-#   agent:    mini_swe_agent_v2
-#   setting:  solo
+#   repo:          dottxt_ai_outlines_task
+#   model:         gpt-5.4
+#   provider:      azure
+#   backend:       docker
+#   agent:         mini_swe_agent_v2
+#   setting:       coop
+#   protocol path: scripts/prompts/cooperation_protocol.jinja
 #
 # Usage:
-#   ./scripts/run_outlines_gpt54_v2_solo_transition_subset.sh
+#   ./scripts/run_outlines_gpt54_v2_transition_protocol_experiment.sh
 #
-# Narrow or reroute the run with environment variables:
-#   TASK_ID=1655 ./scripts/run_outlines_gpt54_v2_solo_transition_subset.sh --force
-#   TASK_ID=1655 FEATURES=2,3 ./scripts/run_outlines_gpt54_v2_solo_transition_subset.sh --force
-#   PROVIDER=vllm ENDPOINT=http://localhost:8000/v1 ./scripts/run_outlines_gpt54_v2_solo_transition_subset.sh
+# Narrow the run or override the protocol/provider routing with environment variables:
+#   TASK_ID=1655 FEATURES=1,2 ./scripts/run_outlines_gpt54_v2_transition_protocol_experiment.sh --force
+#   COOP_PROTOCOL_PATH=/path/to/protocol.jinja ./scripts/run_outlines_gpt54_v2_transition_protocol_experiment.sh
+#   PROVIDER=vllm ENDPOINT=http://localhost:8000/v1 ./scripts/run_outlines_gpt54_v2_transition_protocol_experiment.sh
 #
 # Extra cooperbench run options can be appended after the script arguments.
 
@@ -31,8 +31,7 @@ if [ -f "$PROJECT_DIR/.env" ]; then
     set +a
 fi
 
-RUN_NAME="${RUN_NAME:-gpt54-outlines-mini-swe-v2-solo-transitions}"
-SUBSET="${SUBSET:-outlines_prompt_transitions}"
+RUN_NAME="${RUN_NAME:-gpt54-outlines-mini-swe-v2-coop-transition-protocol}"
 MODEL="${MODEL:-gpt-5.4}"
 REPO="${REPO:-dottxt_ai_outlines_task}"
 PROVIDER="${PROVIDER:-azure}"
@@ -42,6 +41,12 @@ BACKEND="${BACKEND:-docker}"
 AGENT="${AGENT:-mini_swe_agent_v2}"
 CONCURRENCY="${CONCURRENCY:-1}"
 EVAL_CONCURRENCY="${EVAL_CONCURRENCY:-1}"
+SETTING="${SETTING:-coop}"
+if [ "${COOP_PROTOCOL_PATH+x}" ]; then
+    COOP_PROTOCOL_PATH="${COOP_PROTOCOL_PATH}"
+else
+    COOP_PROTOCOL_PATH="$PROJECT_DIR/scripts/prompts/cooperation_protocol.jinja"
+fi
 
 # Optional filters/provider routing.
 TASK_ID="${TASK_ID:-}"
@@ -49,24 +54,37 @@ FEATURES="${FEATURES:-}"
 
 cd "$PROJECT_DIR"
 
+if [ "$AGENT" != "mini_swe_agent_v2" ]; then
+    echo "Error: --coop-protocol-path is only supported with AGENT=mini_swe_agent_v2 in this script." >&2
+    exit 1
+fi
+
 if [ "$BACKEND" = "docker" ] && [ "$AGENT" = "openhands_sdk" ]; then
     echo "Error: openhands_sdk runs its agent-server in Modal and does not use the docker backend." >&2
     echo "Use AGENT=mini_swe_agent_v2 for BACKEND=docker, or configure Modal for AGENT=openhands_sdk." >&2
     exit 1
 fi
 
+if [ -n "$COOP_PROTOCOL_PATH" ] && [ ! -f "$COOP_PROTOCOL_PATH" ]; then
+    echo "Error: COOP_PROTOCOL_PATH does not exist: $COOP_PROTOCOL_PATH" >&2
+    exit 1
+fi
+
 args=(
     run
     -n "$RUN_NAME"
-    --subset "$SUBSET"
     -r "$REPO"
     --backend "$BACKEND"
     --model "$MODEL"
     --agent "$AGENT"
-    --setting solo
+    --setting "$SETTING"
     --concurrency "$CONCURRENCY"
     --eval-concurrency "$EVAL_CONCURRENCY"
 )
+
+if [ -n "$COOP_PROTOCOL_PATH" ]; then
+    args+=(--coop-protocol-path "$COOP_PROTOCOL_PATH")
+fi
 
 if [ -n "$TASK_ID" ]; then
     args+=(-t "$TASK_ID")

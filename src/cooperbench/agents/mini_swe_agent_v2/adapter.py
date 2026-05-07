@@ -4,10 +4,11 @@ This adapter wraps the mini-swe-agent v2 framework (tool-calling version)
 to conform to the AgentRunner interface used by CooperBench.
 """
 
+from pathlib import Path
+
 import yaml
 
 from cooperbench.agents import AgentResult
-from cooperbench.llm_config import resolve_llm_config
 from cooperbench.agents.mini_swe_agent_v2.agents.default import DefaultAgent
 from cooperbench.agents.mini_swe_agent_v2.config import get_config_path
 from cooperbench.agents.mini_swe_agent_v2.connectors import GitConnector
@@ -15,6 +16,7 @@ from cooperbench.agents.mini_swe_agent_v2.connectors.messaging import MessagingC
 from cooperbench.agents.mini_swe_agent_v2.models.litellm_model import LitellmModel
 from cooperbench.agents.mini_swe_agent_v2.models.utils.actions_toolcall import SEND_MESSAGE_TOOL
 from cooperbench.agents.registry import register
+from cooperbench.llm_config import resolve_llm_config
 
 
 @register("mini_swe_agent_v2")
@@ -118,6 +120,10 @@ class MiniSweAgentV2Runner:
             "git_enabled": git_enabled,
             "messaging_enabled": messaging_enabled,
         }
+        self._append_coop_protocol(
+            agent_cfg=agent_cfg,
+            protocol_path=default_config.get("coop_protocol_path"),
+        )
 
         agent = DefaultAgent(
             model=model,
@@ -151,6 +157,29 @@ class MiniSweAgentV2Runner:
             messages=agent.messages,
             sent_messages=agent.sent_messages,
             error=error_msg,
+        )
+
+    def _append_coop_protocol(
+        self,
+        *,
+        agent_cfg: dict,
+        protocol_path: str | None,
+    ) -> None:
+        """Append a cooperation protocol block to mini_swe_agent_v2's system template."""
+        if not protocol_path:
+            return
+
+        path = Path(protocol_path)
+        if not path.exists():
+            raise FileNotFoundError(f"Cooperation protocol file not found: {protocol_path}")
+
+        protocol = path.read_text()
+        if protocol == "":
+            return
+
+        agent_cfg["system_template"] = (
+            f"{agent_cfg['system_template']}\n\n"
+            f"<cooperation_protocol>\n{protocol}\n</cooperation_protocol>"
         )
 
     def _get_patch(self, env, base_commit: str) -> str:

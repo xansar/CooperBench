@@ -200,7 +200,7 @@ def main():
     )
     run_parser.add_argument(
         "--coop-protocol-path",
-        help="Path to a Jinja cooperation protocol prompt to append for mini_swe_agent",
+        help="Path to a Jinja cooperation protocol prompt to append for mini_swe_agent or mini_swe_agent_v2",
     )
 
     # === eval command ===

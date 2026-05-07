@@ -29,9 +29,14 @@ class TestRunConfig:
             # Should not raise
             run(run_name="test-empty", repo="nonexistent")
 
+    def test_coop_protocol_accepts_mini_swe_agent_v2(self):
+        """Protocol prompt is supported by both mini_swe_agent adapters."""
+        with patch("cooperbench.runner.core.discover_tasks", return_value=[]):
+            run(run_name="test", agent="mini_swe_agent_v2", coop_protocol_path="protocol.txt")
+
     def test_coop_protocol_rejects_non_mini_agent(self):
-        """Protocol prompt is intentionally scoped to mini_swe_agent."""
-        with pytest.raises(ValueError, match="only supported with --agent mini_swe_agent"):
+        """Protocol prompt is intentionally scoped to mini_swe_agent adapters."""
+        with pytest.raises(ValueError, match="only supported with --agent mini_swe_agent or mini_swe_agent_v2"):
             run(run_name="test", agent="swe_agent", coop_protocol_path="protocol.txt")
 
 

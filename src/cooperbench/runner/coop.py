@@ -371,7 +371,7 @@ def _extract_conversation(results: dict, agents: list[str]) -> list[dict]:
 
         # Method 2: Parse from messages list (mini_swe_agent bash commands + OpenHands events)
         for msg in r.get("messages", []):
-            content = msg.get("content", "")
+            content = _message_content_as_text(msg.get("content"))
             ts = msg.get("timestamp")
 
             # Outgoing: agent sent a message via send_message command (bash format)
@@ -419,3 +419,22 @@ def _extract_conversation(results: dict, agents: list[str]) -> list[dict]:
                     )
 
     return conversation
+
+
+def _message_content_as_text(content) -> str:
+    """Normalize message content for conversation parsing."""
+    if content is None:
+        return ""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for item in content:
+            if isinstance(item, str):
+                parts.append(item)
+            elif isinstance(item, dict):
+                text = item.get("text")
+                if isinstance(text, str):
+                    parts.append(text)
+        return "\n".join(parts)
+    return str(content)

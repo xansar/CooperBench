@@ -113,6 +113,7 @@ def format_toolcall_observation_messages(
     padded_outputs = outputs + [not_executed] * (len(actions) - len(outputs))
     results = []
     for action, output in zip(actions, padded_outputs):
+        output = {"output": "", "returncode": None, "exception_info": "", **output}
         content = Template(observation_template, undefined=StrictUndefined).render(
             output=output, **(template_vars or {})
         )

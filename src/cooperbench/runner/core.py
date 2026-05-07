@@ -83,10 +83,10 @@ def run(
         eval_concurrency: Max parallel evaluations (default: 10)
         backend: Execution backend ("modal" or "docker")
         agent_config: Path to agent-specific configuration file (optional)
-        coop_protocol_path: Path to cooperation protocol prompt for mini_swe_agent (optional)
+        coop_protocol_path: Path to cooperation protocol prompt for mini_swe_agent adapters (optional)
     """
-    if coop_protocol_path and agent != "mini_swe_agent":
-        raise ValueError("--coop-protocol-path is only supported with --agent mini_swe_agent")
+    if coop_protocol_path and agent not in {"mini_swe_agent", "mini_swe_agent_v2"}:
+        raise ValueError("--coop-protocol-path is only supported with --agent mini_swe_agent or mini_swe_agent_v2")
 
     # Install cleanup handler to terminate Modal sandboxes on Ctrl+C
     if install_cleanup_handler:
