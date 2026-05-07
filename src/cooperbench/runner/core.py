@@ -58,6 +58,7 @@ def run(
     eval_concurrency: int = 10,
     backend: str = "modal",
     agent_config: str | None = None,
+    coop_protocol_path: str | None = None,
 ) -> None:
     """Run benchmark tasks.
 
@@ -82,7 +83,11 @@ def run(
         eval_concurrency: Max parallel evaluations (default: 10)
         backend: Execution backend ("modal" or "docker")
         agent_config: Path to agent-specific configuration file (optional)
+        coop_protocol_path: Path to cooperation protocol prompt for mini_swe_agent (optional)
     """
+    if coop_protocol_path and agent != "mini_swe_agent":
+        raise ValueError("--coop-protocol-path is only supported with --agent mini_swe_agent")
+
     # Install cleanup handler to terminate Modal sandboxes on Ctrl+C
     if install_cleanup_handler:
         install_cleanup_handler()
@@ -130,6 +135,7 @@ def run(
         setting,
         concurrency,
         len(tasks),
+        coop_protocol_path,
     )
 
     results_list = []
@@ -154,6 +160,7 @@ def run(
                 quiet=not is_single,
                 backend=backend,
                 agent_config=agent_config,
+                coop_protocol_path=coop_protocol_path,
             )
         else:
             return execute_coop(
@@ -173,6 +180,7 @@ def run(
                 messaging_enabled=messaging_enabled,
                 backend=backend,
                 agent_config=agent_config,
+                coop_protocol_path=coop_protocol_path,
             )
 
     eval_stats = None
@@ -284,6 +292,7 @@ def _save_config(
     setting: str,
     concurrency: int,
     total_tasks: int,
+    coop_protocol_path: str | None = None,
 ) -> None:
     """Save run configuration."""
     run_config = {
@@ -296,6 +305,7 @@ def _save_config(
         "setting": setting,
         "concurrency": concurrency,
         "total_tasks": total_tasks,
+        "coop_protocol_path": coop_protocol_path,
         "started_at": datetime.now().isoformat(),
     }
     with open(log_dir / "config.json", "w") as f:
@@ -428,6 +438,48 @@ def _run_with_progress(
             transient=True,
         ) as progress:
             task_progress = progress.add_task("running", total=len(tasks))
+            eval_progress = progress.add_task("evaluating", total=len(tasks)) if auto_eval else None
+
+            def process_eval_future(eval_future) -> None:
+                nonlocal eval_passed, eval_failed, eval_errors, eval_skipped
+
+                task_info, result, task_name, feat_str = eval_futures.pop(eval_future)
+                try:
+                    eval_result = eval_future.result()
+                    eval_stats = _process_eval_result(eval_result, task_info)
+                    if eval_stats:
+                        ep, ef, ee, es = eval_stats[:4]
+                        eval_passed += ep
+                        eval_failed += ef
+                        eval_errors += ee
+                        eval_skipped += es
+
+                        eval_results.append(
+                            {
+                                "task": f"{task_name}/{feat_str}",
+                                "status": "pass"
+                                if eval_result.get("both_passed")
+                                else "fail"
+                                if not eval_result.get("error")
+                                else "error",
+                            }
+                        )
+
+                        is_skipped = eval_result.get("skipped", False)
+                        if eval_result.get("error"):
+                            eval_status = "[yellow]✗ error[/yellow]"
+                        elif eval_result.get("both_passed"):
+                            eval_status = "[dim]→ pass[/dim]" if is_skipped else "[green]✓ pass[/green]"
+                        else:
+                            eval_status = "[dim]→ fail[/dim]" if is_skipped else "[red]✗ fail[/red]"
+
+                        progress.console.print(f"  {eval_status} {task_name} [dim][{feat_str}][/dim]")
+                except Exception as e:
+                    eval_errors += 1
+                    progress.console.print(f"  → [yellow]✗ eval error[/yellow] {task_name} [dim]{e}[/dim]")
+                finally:
+                    if eval_progress is not None:
+                        progress.update(eval_progress, advance=1)
 
             with ThreadPoolExecutor(max_workers=concurrency) as executor:
                 future_to_task = {executor.submit(execute_task, t): t for t in tasks}
@@ -472,98 +524,33 @@ def _run_with_progress(
                                     backend,
                                 )
                                 eval_futures[eval_future] = (task_info, result, task_name, feat_str)
+                            elif eval_progress is not None:
+                                progress.update(eval_progress, advance=1)
                             progress.console.print(f"{status_display} {task_name} [dim][{feat_str}][/dim]")
                         else:
+                            if eval_progress is not None:
+                                progress.update(eval_progress, advance=1)
                             progress.console.print(f"{status_display} {task_name} [dim][{feat_str}][/dim]")
 
                         # Check for completed evals (non-blocking)
                         if eval_futures:
                             completed_evals = [f for f in list(eval_futures.keys()) if f.done()]
                             for eval_future in completed_evals:
-                                task_info, result, task_name, feat_str = eval_futures.pop(eval_future)
-                                try:
-                                    eval_result = eval_future.result()
-                                    eval_stats = _process_eval_result(eval_result, task_info)
-                                    if eval_stats:
-                                        ep, ef, ee, es = eval_stats[:4]
-                                        eval_passed += ep
-                                        eval_failed += ef
-                                        eval_errors += ee
-                                        eval_skipped += es
-
-                                        # Store eval result
-                                        eval_results.append(
-                                            {
-                                                "task": f"{task_name}/{feat_str}",
-                                                "status": "pass"
-                                                if eval_result.get("both_passed")
-                                                else "fail"
-                                                if not eval_result.get("error")
-                                                else "error",
-                                            }
-                                        )
-
-                                        # Print eval result indented to show it's a test result
-                                        # For skipped evals (already existed), show actual result with dim indicator
-                                        is_skipped = eval_result.get("skipped", False)
-                                        if eval_result.get("error"):
-                                            eval_status = "[yellow]✗ error[/yellow]"
-                                        elif eval_result.get("both_passed"):
-                                            eval_status = "[dim]→ pass[/dim]" if is_skipped else "[green]✓ pass[/green]"
-                                        else:
-                                            eval_status = "[dim]→ fail[/dim]" if is_skipped else "[red]✗ fail[/red]"
-
-                                        progress.console.print(f"  {eval_status} {task_name} [dim][{feat_str}][/dim]")
-                                except Exception as e:
-                                    eval_errors += 1
-                                    progress.console.print(f"  → [yellow]✗ eval error[/yellow] [dim]{e}[/dim]")
+                                process_eval_future(eval_future)
 
                     except Exception as e:
                         failed += 1
                         results_list.append({"task": f"{task_name}/{feat_str}", "status": "error", "error": str(e)})
+                        if eval_progress is not None:
+                            progress.update(eval_progress, advance=1)
                         progress.console.print(f"[red]✗ error[/red] {task_name} [dim]{e}[/dim]")
 
                     progress.update(task_progress, advance=1)
 
             # Wait for all remaining evals to complete
             if eval_futures:
-                for eval_future in as_completed(eval_futures.keys()):
-                    task_info, result, task_name, feat_str = eval_futures.pop(eval_future)
-                    try:
-                        eval_result = eval_future.result()
-                        eval_stats = _process_eval_result(eval_result, task_info)
-                        if eval_stats:
-                            ep, ef, ee, es = eval_stats[:4]
-                            eval_passed += ep
-                            eval_failed += ef
-                            eval_errors += ee
-                            eval_skipped += es
-
-                            # Store eval result
-                            eval_results.append(
-                                {
-                                    "task": f"{task_name}/{feat_str}",
-                                    "status": "pass"
-                                    if eval_result.get("both_passed")
-                                    else "fail"
-                                    if not eval_result.get("error")
-                                    else "error",
-                                }
-                            )
-
-                            # For skipped evals (already existed), show actual result with dim indicator
-                            is_skipped = eval_result.get("skipped", False)
-                            if eval_result.get("error"):
-                                eval_status = "[yellow]✗ error[/yellow]"
-                            elif eval_result.get("both_passed"):
-                                eval_status = "[dim]→ pass[/dim]" if is_skipped else "[green]✓ pass[/green]"
-                            else:
-                                eval_status = "[dim]→ fail[/dim]" if is_skipped else "[red]✗ fail[/red]"
-
-                            progress.console.print(f"  {eval_status} {task_name} [dim][{feat_str}][/dim]")
-                    except Exception as e:
-                        eval_errors += 1
-                        progress.console.print(f"  → [yellow]✗ eval error[/yellow] {task_name} [dim]{e}[/dim]")
+                for eval_future in as_completed(list(eval_futures.keys())):
+                    process_eval_future(eval_future)
 
     finally:
         if eval_executor:

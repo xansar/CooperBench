@@ -86,8 +86,7 @@ Run agents on a task:
 ```bash
 # Run against Azure OpenAI with Entra ID auth on Docker
 cooperbench run -n azure-exp -r llama_index_task --backend docker \
-  --provider azure --endpoint https://<resource>.openai.azure.com \
-  --api-version 2024-12-01-preview --model <deployment_name>
+  --provider azure --api-version 2024-12-01-preview --model <deployment_name>
 
 # Run against a local OpenAI-compatible vLLM endpoint on Docker
 cooperbench run -n vllm-exp -r llama_index_task --backend docker \

@@ -4,16 +4,18 @@ This adapter wraps the mini-swe-agent framework to conform to the
 AgentRunner interface used by CooperBench.
 """
 
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import yaml
+from jinja2 import StrictUndefined, Template
 
 from cooperbench.agents import AgentResult
 from cooperbench.llm_config import resolve_llm_config
 
 if TYPE_CHECKING:
     from cooperbench.agents.mini_swe_agent.environments.docker import DockerEnvironment
-from cooperbench.agents.mini_swe_agent.agents.default import DefaultAgent
+from cooperbench.agents.mini_swe_agent.agents.default import AgentConfig, DefaultAgent
 from cooperbench.agents.mini_swe_agent.config import get_config_path
 from cooperbench.agents.mini_swe_agent.connectors import GitConnector
 from cooperbench.agents.mini_swe_agent.connectors.messaging import MessagingConnector
@@ -155,6 +157,14 @@ class MiniSweAgentRunner:
             "git_enabled": git_enabled,
             "messaging_enabled": messaging_enabled,
         }
+        self._append_coop_protocol(
+            agent_cfg=agent_cfg,
+            protocol_path=default_config.get("coop_protocol_path"),
+            task=task,
+            env=env,
+            model=model,
+            extra_vars=extra_vars,
+        )
 
         agent = DefaultAgent(
             model=model,
@@ -186,6 +196,42 @@ class MiniSweAgentRunner:
             steps=model.n_calls,
             messages=agent.messages,
             error=error_msg,
+        )
+
+    def _append_coop_protocol(
+        self,
+        *,
+        agent_cfg: dict,
+        protocol_path: str | None,
+        task: str,
+        env: "ModalEnvironment | DockerEnvironment",
+        model: LitellmModel,
+        extra_vars: dict,
+    ) -> None:
+        """Append a rendered cooperation protocol block to mini-swe-agent's system template."""
+        if not protocol_path:
+            return
+
+        path = Path(protocol_path)
+        if not path.exists():
+            raise FileNotFoundError(f"Cooperation protocol file not found: {protocol_path}")
+
+        protocol_template = path.read_text()
+        if protocol_template == "":
+            return
+
+        config_class = agent_cfg.get("config_class", AgentConfig)
+        config_kwargs = {key: value for key, value in agent_cfg.items() if key != "config_class"}
+        template_vars = (
+            config_class(**config_kwargs).model_dump()
+            | env.get_template_vars()
+            | model.get_template_vars()
+            | {"task": task, **extra_vars}
+        )
+        rendered_protocol = Template(protocol_template, undefined=StrictUndefined).render(**template_vars)
+        agent_cfg["system_template"] = (
+            f"{agent_cfg['system_template']}\n\n"
+            f"<cooperation_protocol>\n{rendered_protocol}\n</cooperation_protocol>"
         )
 
     def _get_patch(self, env: "ModalEnvironment | DockerEnvironment", base_commit: str) -> str:

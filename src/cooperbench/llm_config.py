@@ -5,8 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-
 AZURE_SCOPE = "https://cognitiveservices.azure.com/.default"
+AZURE_DEFAULT_ENDPOINT = "https://societalllm.openai.azure.com/"
 
 
 @dataclass(frozen=True)
@@ -40,22 +40,21 @@ def resolve_llm_config(
 
     normalized_provider = provider.strip().lower()
     if normalized_provider == "azure":
-        if not endpoint:
-            raise ValueError("Azure provider requires --endpoint")
         if not api_version:
             raise ValueError("Azure provider requires --api-version/--version")
 
+        azure_endpoint = endpoint or AZURE_DEFAULT_ENDPOINT
         token_provider = _build_azure_ad_token_provider()
         return ResolvedLLMConfig(
             model_name=f"azure/{model}",
             model_kwargs={
-                "api_base": endpoint,
+                "api_base": azure_endpoint,
                 "api_version": api_version,
                 "azure_ad_token_provider": token_provider,
             },
             metadata={
                 "provider": "azure",
-                "endpoint": endpoint,
+                "endpoint": azure_endpoint,
                 "api_version": api_version,
                 "model": model,
             },

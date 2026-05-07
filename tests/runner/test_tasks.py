@@ -158,6 +158,19 @@ class TestLoadSubset:
         lite_subset = load_subset("lite")
         assert subset["tasks"].issubset(lite_subset["tasks"]), "Flash tasks should be subset of lite"
 
+    def test_outlines_prompt_transitions_subset_is_stable(self):
+        """Verify prompt-transition subset matches the analyzed Outlines transition pairs."""
+        subset = load_subset("outlines_prompt_transitions")
+
+        assert subset["tasks"] == {
+            ("dottxt_ai_outlines_task", 1371),
+            ("dottxt_ai_outlines_task", 1655),
+            ("dottxt_ai_outlines_task", 1706),
+        }
+
+        discovered = discover_tasks(subset="outlines_prompt_transitions")
+        assert len(discovered) == 28, "Outlines prompt-transition subset should contain 28 feature pairs"
+
     def test_load_subset_returns_dict_with_pairs(self):
         """Test that load_subset returns dict with tasks and pairs."""
         subset = load_subset("lite")

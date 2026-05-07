@@ -29,6 +29,11 @@ class TestRunConfig:
             # Should not raise
             run(run_name="test-empty", repo="nonexistent")
 
+    def test_coop_protocol_rejects_non_mini_agent(self):
+        """Protocol prompt is intentionally scoped to mini_swe_agent."""
+        with pytest.raises(ValueError, match="only supported with --agent mini_swe_agent"):
+            run(run_name="test", agent="swe_agent", coop_protocol_path="protocol.txt")
+
 
 class TestRunOutputStructure:
     """Tests for runner output directory structure."""

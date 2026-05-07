@@ -1,0 +1,38 @@
+This section only defines the cooperation protocol. Follow the main task instructions for implementation.
+
+<message_labels>
+When sending a message to another agent, start with exactly one label:
+COMMITMENT, QUESTION, ANSWER, EVIDENCE, CONFLICT_WARNING, or BLOCKED.
+
+Use messages only for coordination that affects the combined solution.
+Do not send generic progress updates.
+If another agent asks a direct QUESTION, answer it before unrelated work.
+</message_labels>
+
+<claim_before_shared_edits>
+Before editing a file, function, class, test, or config that may also be edited by another agent, send:
+COMMITMENT: editing <file/function/region>; implementing <behavior>; avoiding <file/function/region>; dependency <none or details>.
+
+If overlap is unclear, send:
+QUESTION: do you plan to edit <file/function/region>?
+
+After asking a QUESTION about a potentially overlapping region, do not edit that region until the answer is received. Work on a clearly non-overlapping task instead if possible.
+
+Do not treat lack of response as permission to edit an overlapping region.
+
+If your edits need to expand beyond a previous COMMITMENT, send a new COMMITMENT before editing the additional region.
+</claim_before_shared_edits>
+
+<protect_partner_changes>
+Before changing code that may contain partner work, inspect the current file state.
+Do not delete or rewrite partner changes unless needed to resolve a direct conflict.
+If resolving a conflict, keep both intended behaviors when possible and send:
+CONFLICT_WARNING: <file/function/region>; conflict <summary>; planned resolution <summary>.
+</protect_partner_changes>
+
+<evidence_before_submit>
+Before final submission, send one EVIDENCE message:
+EVIDENCE: changed <files>; implemented <summary>; checks <commands and results>; risks <remaining risks or none>.
+
+If no checks were run, write: checks not run; unverified.
+</evidence_before_submit>

@@ -122,6 +122,25 @@ class TestCLI:
         assert kwargs["llm_endpoint"] == "https://example.openai.azure.com"
         assert kwargs["llm_api_version"] == "2024-12-01-preview"
 
+    def test_cli_run_passes_coop_protocol_path(self):
+        """Test run subcommand forwards mini_swe_agent protocol path."""
+        from cooperbench.cli import main
+
+        argv = [
+            "cooperbench",
+            "run",
+            "-n",
+            "protocol-test",
+            "--coop-protocol-path",
+            "protocol.txt",
+        ]
+        with patch.object(sys, "argv", argv):
+            with patch("cooperbench.runner.run") as mock_run:
+                main()
+
+        _, kwargs = mock_run.call_args
+        assert kwargs["coop_protocol_path"] == "protocol.txt"
+
     def test_cli_eval_subcommand_exists(self):
         """Test eval subcommand exists."""
         from cooperbench.cli import main

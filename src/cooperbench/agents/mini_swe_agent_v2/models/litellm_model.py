@@ -23,6 +23,11 @@ from cooperbench.agents.mini_swe_agent_v2.models.utils.retry import retry
 logger = logging.getLogger("litellm_model")
 
 
+def _json_safe(value: Any) -> Any:
+    """Convert nested model/config data to plain JSON-compatible values."""
+    return json.loads(json.dumps(value, default=str))
+
+
 class LitellmModelConfig(BaseModel):
     model_name: str
     """Model name. Highly recommended to include the provider in the model name, e.g., `anthropic/claude-sonnet-4-5-20250929`."""
@@ -141,7 +146,7 @@ class LitellmModel:
         return {
             "info": {
                 "config": {
-                    "model": self.config.model_dump(mode="json"),
+                    "model": _json_safe(self.config.model_dump(mode="python")),
                     "model_type": f"{self.__class__.__module__}.{self.__class__.__name__}",
                 },
             }

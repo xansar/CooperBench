@@ -31,6 +31,8 @@ class DockerEnvironmentConfig(BaseModel):
     """Additional arguments to pass to the docker/container executable.
     Default is ["--rm"], which removes the container after it exits.
     """
+    network: str | None = None
+    """Optional Docker network to attach the container to."""
     container_timeout: str = "2h"
     """Max duration to keep container running. Uses the same format as the sleep command."""
     pull_timeout: int = 120
@@ -83,10 +85,14 @@ class DockerEnvironment:
             "-w",
             self.config.cwd,
             *self.config.run_args,
-            self.config.image,
+            "--entrypoint",
             "sleep",
+            self.config.image,
             self.config.container_timeout,
         ]
+        if self.config.network:
+            image_index = cmd.index(self.config.image)
+            cmd[image_index:image_index] = ["--network", self.config.network]
         self.logger.debug(f"Starting container with command: {shlex.join(cmd)}")
         result = subprocess.run(
             cmd,
@@ -134,8 +140,29 @@ class DockerEnvironment:
                 "exception_info": f"An error occurred while executing the command: {e}",
                 "extra": {"exception_type": type(e).__name__, "exception": str(e)},
             }
+        self._raise_if_container_unavailable(output)
         self._check_finished(output)
         return output
+
+    def _raise_if_container_unavailable(self, output: dict):
+        """Raise when docker exec reports that the backing container is gone."""
+        if output.get("returncode") == 0:
+            return
+
+        text = "\n".join(
+            str(output.get(key, ""))
+            for key in ("output", "exception_info")
+            if output.get(key)
+        )
+        missing_container_markers = (
+            "No such container",
+            "container is not running",
+            "is not running",
+        )
+        if any(marker in text for marker in missing_container_markers):
+            container_id = self.container_id or "<unknown>"
+            self.container_id = None
+            raise RuntimeError(f"Docker container is unavailable: {container_id}. {text.strip()}")
 
     def _check_finished(self, output: dict):
         """Raises Submitted if the output indicates task completion."""
@@ -152,8 +179,10 @@ class DockerEnvironment:
 
     def cleanup(self):
         """Stop and remove the Docker container."""
-        if getattr(self, "container_id", None) is not None:  # if init fails early, container_id might not be set
-            cmd = f"(timeout 60 {self.config.executable} stop {self.container_id} || {self.config.executable} rm -f {self.container_id}) >/dev/null 2>&1 &"
+        container_id = getattr(self, "container_id", None)
+        if container_id is not None:  # if init fails early, container_id might not be set
+            self.container_id = None
+            cmd = f"(timeout 60 {self.config.executable} stop {container_id} || {self.config.executable} rm -f {container_id}) >/dev/null 2>&1 &"
             subprocess.Popen(cmd, shell=True)
 
     def __del__(self):

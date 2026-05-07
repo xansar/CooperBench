@@ -4,7 +4,7 @@ from unittest.mock import sentinel
 
 import pytest
 
-from cooperbench.llm_config import resolve_llm_config
+from cooperbench.llm_config import AZURE_DEFAULT_ENDPOINT, resolve_llm_config
 
 
 def test_legacy_model_passthrough():
@@ -30,14 +30,24 @@ def test_vllm_requires_endpoint():
         resolve_llm_config(model="qwen2.5-coder", provider="vllm")
 
 
-def test_azure_requires_endpoint():
-    with pytest.raises(ValueError, match="requires --endpoint"):
-        resolve_llm_config(model="deploy", provider="azure", api_version="2024-12-01-preview")
+def test_azure_uses_default_endpoint(monkeypatch):
+    monkeypatch.setattr(
+        "cooperbench.llm_config._build_azure_ad_token_provider",
+        lambda: sentinel.azure_token_provider,
+    )
+    resolved = resolve_llm_config(model="deploy", provider="azure", api_version="2024-12-01-preview")
+    assert resolved.model_name == "azure/deploy"
+    assert resolved.model_kwargs == {
+        "api_base": AZURE_DEFAULT_ENDPOINT,
+        "api_version": "2024-12-01-preview",
+        "azure_ad_token_provider": sentinel.azure_token_provider,
+    }
+    assert resolved.metadata["endpoint"] == AZURE_DEFAULT_ENDPOINT
 
 
 def test_azure_requires_api_version():
     with pytest.raises(ValueError, match="requires --api-version/--version"):
-        resolve_llm_config(model="deploy", provider="azure", endpoint="https://example.openai.azure.com")
+        resolve_llm_config(model="deploy", provider="azure")
 
 
 def test_azure_resolution(monkeypatch):

@@ -198,6 +198,10 @@ def main():
         "--agent-config",
         help="Path to agent-specific configuration file (format determined by agent)",
     )
+    run_parser.add_argument(
+        "--coop-protocol-path",
+        help="Path to a Jinja cooperation protocol prompt to append for mini_swe_agent",
+    )
 
     # === eval command ===
     eval_parser = subparsers.add_parser(
@@ -312,6 +316,7 @@ def _run_command(args):
         eval_concurrency=args.eval_concurrency,
         backend=args.backend,
         agent_config=args.agent_config if hasattr(args, "agent_config") else None,
+        coop_protocol_path=args.coop_protocol_path if hasattr(args, "coop_protocol_path") else None,
     )
 
 

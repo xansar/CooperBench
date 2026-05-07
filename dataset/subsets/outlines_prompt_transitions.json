@@ -1,0 +1,64 @@
+{
+  "name": "outlines_prompt_transitions",
+  "description": "28-pair dottxt_ai_outlines_task subset where coop and coop+prompt results changed in gpt-5.4 experiments.",
+  "source": {
+    "analysis": "logs/gpt54_outlines_coop_prompt_analysis.md",
+    "baseline_run": "logs/gpt54-outlines-coop",
+    "prompt_run": "logs/gpt54-outlines-coop-protocol"
+  },
+  "stats": {
+    "tasks": 3,
+    "pairs": 28,
+    "repos": 1,
+    "fail_to_pass": 17,
+    "pass_to_fail": 11
+  },
+  "transition_groups": {
+    "fail_to_pass": [
+      {
+        "repo": "dottxt_ai_outlines_task",
+        "task_id": 1655,
+        "pairs": [[1, 5], [1, 8], [2, 3], [2, 5], [2, 6], [2, 8], [3, 7], [3, 8], [3, 9], [3, 10], [4, 7], [5, 7], [5, 10], [6, 10], [8, 10]]
+      },
+      {
+        "repo": "dottxt_ai_outlines_task",
+        "task_id": 1706,
+        "pairs": [[3, 7], [5, 6]]
+      }
+    ],
+    "pass_to_fail": [
+      {
+        "repo": "dottxt_ai_outlines_task",
+        "task_id": 1371,
+        "pairs": [[1, 3]]
+      },
+      {
+        "repo": "dottxt_ai_outlines_task",
+        "task_id": 1655,
+        "pairs": [[1, 2], [1, 7], [2, 9], [3, 5], [4, 10], [5, 6], [5, 8]]
+      },
+      {
+        "repo": "dottxt_ai_outlines_task",
+        "task_id": 1706,
+        "pairs": [[4, 5], [4, 6], [6, 7]]
+      }
+    ]
+  },
+  "tasks": [
+    {
+      "repo": "dottxt_ai_outlines_task",
+      "task_id": 1371,
+      "pairs": [[1, 3]]
+    },
+    {
+      "repo": "dottxt_ai_outlines_task",
+      "task_id": 1655,
+      "pairs": [[1, 2], [1, 5], [1, 7], [1, 8], [2, 3], [2, 5], [2, 6], [2, 8], [2, 9], [3, 5], [3, 7], [3, 8], [3, 9], [3, 10], [4, 7], [4, 10], [5, 6], [5, 7], [5, 8], [5, 10], [6, 10], [8, 10]]
+    },
+    {
+      "repo": "dottxt_ai_outlines_task",
+      "task_id": 1706,
+      "pairs": [[3, 7], [4, 5], [4, 6], [5, 6], [6, 7]]
+    }
+  ]
+}

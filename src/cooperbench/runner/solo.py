@@ -25,11 +25,13 @@ def execute_solo(
     quiet: bool = False,
     backend: str = "modal",
     agent_config: str | None = None,
+    coop_protocol_path: str | None = None,
 ) -> dict | None:
     """Execute a solo task (one agent, multiple features).
 
     Args:
         agent_config: Path to agent-specific configuration file (optional)
+        coop_protocol_path: Path to cooperation protocol prompt for mini_swe_agent (optional)
     """
     run_id = uuid.uuid4().hex[:8]
     start_time = datetime.now()
@@ -58,6 +60,7 @@ def execute_solo(
             quiet=quiet,
             backend=backend,
             agent_config=agent_config,
+            coop_protocol_path=coop_protocol_path,
             run_name=run_name,
         )
     except Exception as e:
@@ -159,12 +162,14 @@ def _spawn_solo_agent(
     quiet: bool = False,
     backend: str = "modal",
     agent_config: str | None = None,
+    coop_protocol_path: str | None = None,
     run_name: str | None = None,
 ) -> dict:
     """Spawn a single agent on multiple features (solo mode).
 
     Args:
         agent_config: Path to agent-specific configuration file (optional)
+        coop_protocol_path: Path to cooperation protocol prompt for mini_swe_agent (optional)
     """
     task_dir = Path("dataset") / repo_name / f"task{task_id}"
 
@@ -213,6 +218,7 @@ def _spawn_solo_agent(
         "api_version": llm_api_version,
         "model": model_name,
     }
+    config["coop_protocol_path"] = coop_protocol_path
 
     # Use the agent framework adapter
     runner = get_runner(agent_name)

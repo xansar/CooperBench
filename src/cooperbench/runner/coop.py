@@ -33,11 +33,13 @@ def execute_coop(
     messaging_enabled: bool = True,
     backend: str = "modal",
     agent_config: str | None = None,
+    coop_protocol_path: str | None = None,
 ) -> dict | None:
     """Execute a cooperative task (two agents, separate features).
 
     Args:
         agent_config: Path to agent-specific configuration file (optional)
+        coop_protocol_path: Path to cooperation protocol prompt for mini_swe_agent (optional)
     """
     n_agents = len(features)
     agents = [f"agent{i + 1}" for i in range(n_agents)]
@@ -107,6 +109,7 @@ def execute_coop(
                 quiet=quiet,
                 backend=backend,
                 agent_config=agent_config,
+                coop_protocol_path=coop_protocol_path,
                 run_name=run_name,
                 features=features,
             )
@@ -252,6 +255,7 @@ def _spawn_agent(
     quiet: bool = False,
     backend: str = "modal",
     agent_config: str | None = None,
+    coop_protocol_path: str | None = None,
     run_name: str | None = None,
     features: list[int] | None = None,
 ) -> dict:
@@ -259,6 +263,7 @@ def _spawn_agent(
 
     Args:
         agent_config: Path to agent-specific configuration file (optional)
+        coop_protocol_path: Path to cooperation protocol prompt for mini_swe_agent (optional)
     """
     task_dir = Path("dataset") / repo_name / f"task{task_id}"
     feature_file = task_dir / f"feature{feature_id}" / "feature.md"
@@ -307,6 +312,7 @@ def _spawn_agent(
         "api_version": llm_api_version,
         "model": model_name,
     }
+    config["coop_protocol_path"] = coop_protocol_path
 
     # Use the agent framework adapter
     runner = get_runner(agent_name)
