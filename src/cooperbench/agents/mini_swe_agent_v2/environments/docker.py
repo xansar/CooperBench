@@ -32,7 +32,9 @@ class DockerEnvironmentConfig(BaseModel):
     Default is ["--rm"], which removes the container after it exits.
     """
     network: str | None = None
-    """Optional Docker network to attach the container to."""
+    """Docker network to attach the container to (passed as --network).
+    Required for coop+git so agent containers can reach the git server's
+    bridge network."""
     container_timeout: str = "2h"
     """Max duration to keep container running. Uses the same format as the sleep command."""
     pull_timeout: int = 120
@@ -84,15 +86,17 @@ class DockerEnvironment:
             container_name,
             "-w",
             self.config.cwd,
-            *self.config.run_args,
             "--entrypoint",
-            "sleep",
-            self.config.image,
-            self.config.container_timeout,
+            "/bin/bash",
         ]
         if self.config.network:
-            image_index = cmd.index(self.config.image)
-            cmd[image_index:image_index] = ["--network", self.config.network]
+            cmd += ["--network", self.config.network]
+        cmd += [
+            *self.config.run_args,
+            self.config.image,
+            "-c",
+            f"sleep {self.config.container_timeout}",
+        ]
         self.logger.debug(f"Starting container with command: {shlex.join(cmd)}")
         result = subprocess.run(
             cmd,

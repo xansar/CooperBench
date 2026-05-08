@@ -42,8 +42,9 @@ def test_start_container_overrides_task_image_entrypoint():
     image_index = cmd.index("task-image")
 
     assert env.container_id == "container123"
-    assert cmd[cmd.index("--entrypoint") + 1] == "sleep"
-    assert cmd[image_index + 1] == "2h"
+    assert cmd[cmd.index("--entrypoint") + 1] == "/bin/bash"
+    assert cmd[image_index + 1] == "-c"
+    assert cmd[image_index + 2] == "sleep 2h"
     assert cmd.index("--network") < image_index
     assert cmd[cmd.index("--network") + 1] == "cooperbench-git-test"
 

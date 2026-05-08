@@ -4,6 +4,7 @@ This adapter wraps the mini-swe-agent v2 framework (tool-calling version)
 to conform to the AgentRunner interface used by CooperBench.
 """
 
+import logging
 from pathlib import Path
 
 import yaml
@@ -14,9 +15,11 @@ from cooperbench.agents.mini_swe_agent_v2.config import get_config_path
 from cooperbench.agents.mini_swe_agent_v2.connectors import GitConnector
 from cooperbench.agents.mini_swe_agent_v2.connectors.messaging import MessagingConnector
 from cooperbench.agents.mini_swe_agent_v2.models.litellm_model import LitellmModel
-from cooperbench.agents.mini_swe_agent_v2.models.utils.actions_toolcall import SEND_MESSAGE_TOOL
+from cooperbench.agents.mini_swe_agent_v2.utils.serialize import recursive_merge
 from cooperbench.agents.registry import register
 from cooperbench.llm_config import resolve_llm_config
+
+logger = logging.getLogger(__name__)
 
 
 @register("mini_swe_agent_v2")
@@ -38,21 +41,38 @@ class MiniSweAgentV2Runner:
         config: dict | None = None,
         agent_config: str | None = None,
         log_dir: str | None = None,
+        **kwargs,
     ) -> AgentResult:
         """Run mini-swe-agent v2 on a task."""
-        # Always load default config, then merge with any overrides
-        config_path = get_config_path("mini")
+        # Load coop config when multiple agents, otherwise solo config.
+        is_coop = bool(agents) and len(agents) > 1
+        config_name = "coop" if is_coop else "solo"
+        config_path = get_config_path(config_name)
         with open(config_path) as f:
             default_config = yaml.safe_load(f)
 
-        # Merge passed config overrides into default config
+        # If the caller passed an agent_config YAML path, deep-merge its
+        # `config:` block into the defaults.  This is what CooperBench's
+        # ``--agent-config`` flag forwards to the adapter.
+        if agent_config:
+            try:
+                with open(agent_config) as f:
+                    overrides = yaml.safe_load(f) or {}
+                default_config = recursive_merge(default_config, overrides.get("config", overrides))
+            except FileNotFoundError:
+                logger.error(f"agent_config file not found: {agent_config}")
+            except Exception as e:
+                logger.error(f"Error loading agent_config {agent_config}: {e}")
+
+        # Deep-merge passed config overrides into default config so that partial
+        # overrides (e.g. only agent.compaction_enabled) don't clobber sibling keys.
         if config is not None:
-            default_config.update(config)
+            default_config = recursive_merge(default_config, config)
 
         agent_cfg = default_config.get("agent", {})
         model_cfg = default_config.get("model", {})
         env_cfg = default_config.get("environment", {})
-        backend = default_config.get("backend", "modal")
+        backend = default_config.get("backend", "docker")
         llm_cfg = default_config.get("llm", {})
 
         # Create environment based on backend
@@ -75,18 +95,17 @@ class MiniSweAgentV2Runner:
 
             env = ModalEnvironment(**env_kwargs)
 
-        # Capture base commit for patch generation
-        base_commit_result = env.execute({"command": "git rev-parse HEAD"})
-        base_commit = base_commit_result.get("output", "").strip()
-
         # Setup messaging connector if enabled
         comm = None
         use_messaging = messaging_enabled and comm_url and agents and len(agents) > 1
         if use_messaging:
             comm = MessagingConnector(agent_id=agent_id, agents=agents, url=comm_url)
 
-        # Create LLM model with send_message tool if messaging is enabled
-        extra_tools = [SEND_MESSAGE_TOOL] if use_messaging else None
+        # Register only the bash tool with the model.  send_message is
+        # intercepted by DefaultAgent.execute_actions from inside the bash
+        # command string (``send_message <recipient> <<'MSG' ... MSG``).
+        # Exposing a separate send_message tool confuses smaller models
+        # into alternating between tools unreliably.
         resolved_llm = resolve_llm_config(
             model=llm_cfg.get("model", model_name),
             provider=llm_cfg.get("provider"),
@@ -100,7 +119,6 @@ class MiniSweAgentV2Runner:
         }
         model = LitellmModel(
             model_name=resolved_llm.model_name,
-            extra_tools=extra_tools,
             **merged_model_cfg,
         )
 
@@ -136,6 +154,7 @@ class MiniSweAgentV2Runner:
 
         # Run agent
         error_msg = None
+        result = {}
         try:
             result = agent.run(task=task)
             status = result.get("exit_status", "Submitted")
@@ -143,18 +162,42 @@ class MiniSweAgentV2Runner:
             status = "Error"
             error_msg = str(e)
 
-        # Extract patch (committed + uncommitted changes)
-        patch = self._get_patch(env, base_commit)
+        patch = ""
+        try:
+            r = env.execute({"command": "cat patch.txt 2>/dev/null"})
+            if r.get("returncode") == 0:
+                patch = (r.get("output") or "").strip()
+        except Exception:
+            pass
+
+        # Save full trajectory (includes segments when compaction occurred)
+        if log_dir and agent._compaction_count > 0:
+            traj_path = Path(log_dir) / f"{agent_id}_full_traj.json"
+            agent.save(traj_path)
+            logger.info(
+                f"[{agent_id}] Full trajectory with segments saved to {traj_path} "
+                f"({agent._compaction_count} compaction(s))"
+            )
 
         # Cleanup
         env.cleanup()
+
+        # Tool-calling assistant turns leave content=None (the body lives in
+        # tool_calls).  CooperBench's downstream conversation extractor does
+        # ``"send_message" in content`` which raises TypeError on None — coerce
+        # to "" before returning.
+        sanitized_messages = []
+        for msg in agent.messages:
+            if msg.get("content") is None:
+                msg = {**msg, "content": ""}
+            sanitized_messages.append(msg)
 
         return AgentResult(
             status=status,
             patch=patch,
             cost=agent.cost,
             steps=agent.n_calls,
-            messages=agent.messages,
+            messages=sanitized_messages,
             sent_messages=agent.sent_messages,
             error=error_msg,
         )
@@ -181,11 +224,3 @@ class MiniSweAgentV2Runner:
             f"{agent_cfg['system_template']}\n\n"
             f"<cooperation_protocol>\n{protocol}\n</cooperation_protocol>"
         )
-
-    def _get_patch(self, env, base_commit: str) -> str:
-        """Extract git diff from base commit to current working tree state."""
-        try:
-            result = env.execute({"command": f"git diff {base_commit}"})
-            return result.get("output", "").strip()
-        except Exception:
-            return ""

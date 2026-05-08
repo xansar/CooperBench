@@ -1,6 +1,7 @@
 """CooperBench CLI - benchmark runner.
 
 Usage:
+    cooperbench prepare                       # download dataset from HuggingFace
     cooperbench run -n my-experiment --setting solo -r llama_index_task
     cooperbench run --setting solo -s lite  # auto-generates name: solo-lite-gemini-3-flash
     cooperbench eval -n my-experiment --force
@@ -10,9 +11,13 @@ import argparse
 import os
 import sys
 
+import dotenv
+
+dotenv.load_dotenv()  # load ./.env from cwd before anything reads env vars
+
 os.environ["LITELLM_LOG"] = "ERROR"
 
-import litellm
+import litellm  # noqa: E402
 
 litellm.suppress_debug_info = True  # Suppress "Give Feedback / Get Help" print messages on errors
 
@@ -23,7 +28,7 @@ from cooperbench.utils import clean_model_name  # noqa: E402
 def _generate_run_name(
     setting: str,
     model: str,
-    agent: str = "mini_swe_agent",
+    agent: str = "mini_swe_agent_v2",
     provider: str | None = None,
     subset: str | None = None,
     repo: str | None = None,
@@ -64,6 +69,21 @@ def main():
         description="CooperBench benchmark runner",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
+
+    # === prepare command ===
+    prepare_parser = subparsers.add_parser(
+        "prepare",
+        help="Download the CooperBench dataset from HuggingFace",
+        description=(
+            "Download the CooperBench dataset (CodeConflict/cooperbench-dataset) "
+            "into ./dataset so `run`/`eval` can use it."
+        ),
+    )
+    prepare_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Delete ./dataset before downloading.",
+    )
 
     # === config command ===
     config_parser = subparsers.add_parser(
@@ -141,8 +161,8 @@ def main():
     run_parser.add_argument(
         "-a",
         "--agent",
-        default="mini_swe_agent",
-        help="Agent framework to use (default: mini_swe_agent)",
+        default="mini_swe_agent_v2",
+        help="Agent framework to use (default: mini_swe_agent_v2)",
     )
     run_parser.add_argument(
         "-c",
@@ -191,8 +211,8 @@ def main():
     run_parser.add_argument(
         "--backend",
         choices=["modal", "docker", "gcp"],
-        default="modal",
-        help="Execution backend: modal (cloud), docker (local), or gcp (GCP VM) (default: modal)",
+        default="docker",
+        help="Execution backend: modal (cloud), docker (local), or gcp (GCP VM) (default: docker)",
     )
     run_parser.add_argument(
         "--agent-config",
@@ -200,7 +220,17 @@ def main():
     )
     run_parser.add_argument(
         "--coop-protocol-path",
-        help="Path to a Jinja cooperation protocol prompt to append for mini_swe_agent or mini_swe_agent_v2",
+        help="Path to a cooperation protocol prompt to append for mini_swe_agent_v2",
+    )
+    run_parser.add_argument(
+        "--dataset-dir",
+        default=None,
+        help="Root of the dataset tree (default: ./dataset).",
+    )
+    run_parser.add_argument(
+        "--log-dir",
+        default=None,
+        help="Root to write run logs under (default: ./logs).",
     )
 
     # === eval command ===
@@ -250,8 +280,18 @@ def main():
     eval_parser.add_argument(
         "--backend",
         choices=["modal", "docker", "gcp"],
-        default="modal",
-        help="Execution backend: modal (cloud), docker (local), or gcp (GCP Batch) (default: modal)",
+        default="docker",
+        help="Execution backend: modal (cloud), docker (local), or gcp (GCP Batch) (default: docker)",
+    )
+    eval_parser.add_argument(
+        "--dataset-dir",
+        default=None,
+        help="Root of the dataset tree (default: ./dataset).",
+    )
+    eval_parser.add_argument(
+        "--log-dir",
+        default=None,
+        help="Root of the logs tree (default: ./logs).",
     )
 
     args = parser.parse_args()
@@ -262,6 +302,10 @@ def main():
         _run_command(args)
     elif args.command == "eval":
         _eval_command(args)
+    elif args.command == "prepare":
+        from cooperbench.dataset import _prepare_command
+
+        _prepare_command(args)
 
 
 def _config_command(args):
@@ -317,6 +361,8 @@ def _run_command(args):
         backend=args.backend,
         agent_config=args.agent_config if hasattr(args, "agent_config") else None,
         coop_protocol_path=args.coop_protocol_path if hasattr(args, "coop_protocol_path") else None,
+        dataset_dir=args.dataset_dir if hasattr(args, "dataset_dir") else None,
+        logs_dir=args.log_dir if hasattr(args, "log_dir") else None,
     )
 
 
@@ -341,6 +387,8 @@ def _eval_command(args):
         concurrency=args.concurrency,
         force=args.force,
         backend=args.backend,
+        dataset_dir=args.dataset_dir if hasattr(args, "dataset_dir") else None,
+        logs_dir=args.log_dir if hasattr(args, "log_dir") else None,
     )
 
 

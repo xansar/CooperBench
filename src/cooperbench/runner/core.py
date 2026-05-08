@@ -20,16 +20,12 @@ from rich.progress import (
 from rich.table import Table
 
 from cooperbench.infra.redis import ensure_redis
-
-# Optional import for cleanup handler (may not exist in all versions)
-try:
-    from cooperbench.agents.mini_swe_agent.environments.modal import install_cleanup_handler
-except ImportError:
-    install_cleanup_handler = None
 from cooperbench.runner.coop import execute_coop
 from cooperbench.runner.solo import execute_solo
 from cooperbench.runner.tasks import discover_tasks
 from cooperbench.utils import console
+
+install_cleanup_handler = None
 
 load_dotenv()
 
@@ -47,7 +43,7 @@ def run(
     llm_provider: str | None = None,
     llm_endpoint: str | None = None,
     llm_api_version: str | None = None,
-    agent: str = "mini_swe_agent",
+    agent: str = "mini_swe_agent_v2",
     concurrency: int = 20,
     force: bool = False,
     redis_url: str = "redis://localhost:6379",
@@ -56,9 +52,11 @@ def run(
     messaging_enabled: bool = True,
     auto_eval: bool = True,
     eval_concurrency: int = 10,
-    backend: str = "modal",
+    backend: str = "docker",
     agent_config: str | None = None,
     coop_protocol_path: str | None = None,
+    dataset_dir: str | None = None,
+    logs_dir: str | None = None,
 ) -> None:
     """Run benchmark tasks.
 
@@ -83,16 +81,24 @@ def run(
         eval_concurrency: Max parallel evaluations (default: 10)
         backend: Execution backend ("modal" or "docker")
         agent_config: Path to agent-specific configuration file (optional)
-        coop_protocol_path: Path to cooperation protocol prompt for mini_swe_agent adapters (optional)
+        coop_protocol_path: Path to cooperation protocol prompt for mini_swe_agent_v2 adapters (optional)
+        dataset_dir: Root of the dataset tree.  Defaults to ``./dataset``.
+        logs_dir: Root to write run logs under.  Defaults to ``./logs``.
     """
-    if coop_protocol_path and agent not in {"mini_swe_agent", "mini_swe_agent_v2"}:
-        raise ValueError("--coop-protocol-path is only supported with --agent mini_swe_agent or mini_swe_agent_v2")
+    if coop_protocol_path and agent != "mini_swe_agent_v2":
+        raise ValueError("--coop-protocol-path is only supported with --agent mini_swe_agent_v2")
 
     # Install cleanup handler to terminate Modal sandboxes on Ctrl+C
     if install_cleanup_handler:
         install_cleanup_handler()
 
-    tasks = discover_tasks(subset=subset, repo_filter=repo, task_filter=task_id, features_filter=features)
+    tasks = discover_tasks(
+        subset=subset,
+        repo_filter=repo,
+        task_filter=task_id,
+        features_filter=features,
+        dataset_dir=dataset_dir,
+    )
 
     if not tasks:
         console.print("[yellow]no tasks found[/yellow]")
@@ -121,7 +127,10 @@ def run(
         if messaging_enabled:
             ensure_redis(redis_url)
 
-    log_dir = Path("logs") / run_name
+    from cooperbench.runner.tasks import DEFAULT_LOGS_DIR
+
+    logs_root = Path(logs_dir) if logs_dir is not None else DEFAULT_LOGS_DIR
+    log_dir = logs_root / run_name
     log_dir.mkdir(parents=True, exist_ok=True)
 
     _save_config(
@@ -161,6 +170,8 @@ def run(
                 backend=backend,
                 agent_config=agent_config,
                 coop_protocol_path=coop_protocol_path,
+                dataset_dir=dataset_dir,
+                logs_dir=logs_dir,
             )
         else:
             return execute_coop(
@@ -181,6 +192,8 @@ def run(
                 backend=backend,
                 agent_config=agent_config,
                 coop_protocol_path=coop_protocol_path,
+                dataset_dir=dataset_dir,
+                logs_dir=logs_dir,
             )
 
     eval_stats = None
@@ -197,11 +210,11 @@ def run(
                 _print_single_result(result, tasks[0], is_solo)
             # Evaluate single task if auto_eval enabled (runs for skipped too, _evaluate_single handles existing evals)
             if auto_eval:
-                run_info = _build_run_info(result, tasks[0], setting, run_name)
+                run_info = _build_run_info(result, tasks[0], setting, run_name, logs_dir=logs_dir)
                 if run_info:
                     from cooperbench.eval.evaluate import _evaluate_single
 
-                    eval_result = _evaluate_single(run_info, force=force, backend=backend)
+                    eval_result = _evaluate_single(run_info, force=force, backend=backend, dataset_dir=dataset_dir)
                     if eval_result:
                         stats = _process_eval_result(eval_result, tasks[0])
                         if stats:
@@ -221,6 +234,8 @@ def run(
             run_name,
             force,
             backend,
+            logs_dir=logs_dir,
+            dataset_dir=dataset_dir,
         )
 
     # Summary
@@ -232,7 +247,7 @@ def run(
     # Get aggregate totals from all result.json files (includes previous sessions)
     from cooperbench.utils import get_run_totals
 
-    run_totals = get_run_totals(run_name, setting)
+    run_totals = get_run_totals(run_name, setting, logs_dir=logs_dir)
 
     # Use session time if no skipped (exact), otherwise aggregate (approximate)
     time_info = {
@@ -312,13 +327,22 @@ def _save_config(
         json.dump(run_config, f, indent=2)
 
 
-def _build_run_info(result: dict, task_info: dict, setting: str, run_name: str) -> dict | None:
+def _build_run_info(
+    result: dict,
+    task_info: dict,
+    setting: str,
+    run_name: str,
+    logs_dir: str | None = None,
+) -> dict | None:
     """Build run_info dict for evaluation from run result."""
     log_dir = result.get("log_dir")
     if not log_dir:
         # Reconstruct log_dir for older results that don't have it
+        from cooperbench.runner.tasks import DEFAULT_LOGS_DIR
+
+        logs_root = Path(logs_dir) if logs_dir is not None else DEFAULT_LOGS_DIR
         feature_str = "_".join(f"f{f}" for f in sorted(task_info["features"]))
-        log_dir = str(Path("logs") / run_name / setting / task_info["repo"] / str(task_info["task_id"]) / feature_str)
+        log_dir = str(logs_root / run_name / setting / task_info["repo"] / str(task_info["task_id"]) / feature_str)
 
     return {
         "log_dir": log_dir,
@@ -401,7 +425,10 @@ def _run_with_progress(
     setting: str,
     run_name: str,
     force: bool,
-    backend: str,
+    backend: str = "docker",
+    *,
+    logs_dir: str | None = None,
+    dataset_dir: str | None = None,
 ) -> tuple:
     """Run multiple tasks with progress display and optional inline evaluation."""
     from cooperbench.eval.evaluate import _evaluate_single
@@ -515,13 +542,10 @@ def _run_with_progress(
 
                         # Submit eval if enabled (for done or skipped - _evaluate_single handles existing evals)
                         if auto_eval and status in ("done", "skip") and eval_executor:
-                            run_info = _build_run_info(result, task_info, setting, run_name)
+                            run_info = _build_run_info(result, task_info, setting, run_name, logs_dir=logs_dir)
                             if run_info:
                                 eval_future = eval_executor.submit(
-                                    _evaluate_single,
-                                    run_info,
-                                    force,
-                                    backend,
+                                    _evaluate_single, run_info, force, backend, dataset_dir
                                 )
                                 eval_futures[eval_future] = (task_info, result, task_name, feat_str)
                             elif eval_progress is not None:

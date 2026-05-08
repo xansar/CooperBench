@@ -11,8 +11,9 @@ import modal
 import yaml
 
 from cooperbench.agents import get_runner
-from cooperbench.agents.mini_swe_agent.connectors import create_git_server
+from cooperbench.agents.mini_swe_agent_v2.connectors import create_git_server
 from cooperbench.config import ConfigManager
+from cooperbench.runner.tasks import DEFAULT_DATASET_DIR, DEFAULT_LOGS_DIR
 from cooperbench.utils import console, get_image_name
 
 
@@ -21,7 +22,7 @@ def execute_coop(
     task_id: int,
     features: list[int],
     run_name: str,
-    agent_name: str = "mini_swe_agent",
+    agent_name: str = "mini_swe_agent_v2",
     model_name: str = "vertex_ai/gemini-3-flash-preview",
     llm_provider: str | None = None,
     llm_endpoint: str | None = None,
@@ -31,23 +32,28 @@ def execute_coop(
     quiet: bool = False,
     git_enabled: bool = False,
     messaging_enabled: bool = True,
-    backend: str = "modal",
+    backend: str = "docker",
     agent_config: str | None = None,
     coop_protocol_path: str | None = None,
+    dataset_dir: Path | str | None = None,
+    logs_dir: Path | str | None = None,
 ) -> dict | None:
     """Execute a cooperative task (two agents, separate features).
 
     Args:
         agent_config: Path to agent-specific configuration file (optional)
         coop_protocol_path: Path to cooperation protocol prompt for mini_swe_agent (optional)
+        dataset_dir: Root of the dataset tree.  Defaults to ``./dataset``.
+        logs_dir: Root to write run logs under.  Defaults to ``./logs``.
     """
     n_agents = len(features)
     agents = [f"agent{i + 1}" for i in range(n_agents)]
     run_id = uuid.uuid4().hex[:8]
     start_time = datetime.now()
 
+    logs_root = Path(logs_dir) if logs_dir is not None else DEFAULT_LOGS_DIR
     feature_str = "_".join(f"f{f}" for f in sorted(features))
-    log_dir = Path("logs") / run_name / "coop" / repo_name / str(task_id) / feature_str
+    log_dir = logs_root / run_name / "coop" / repo_name / str(task_id) / feature_str
     result_file = log_dir / "result.json"
 
     if result_file.exists() and not force:
@@ -112,6 +118,8 @@ def execute_coop(
                 coop_protocol_path=coop_protocol_path,
                 run_name=run_name,
                 features=features,
+                dataset_dir=dataset_dir,
+                logs_dir=logs_dir,
             )
         except Exception as e:
             results[agent_id] = {
@@ -253,19 +261,25 @@ def _spawn_agent(
     git_network: str | None = None,
     messaging_enabled: bool = True,
     quiet: bool = False,
-    backend: str = "modal",
+    backend: str = "docker",
     agent_config: str | None = None,
     coop_protocol_path: str | None = None,
     run_name: str | None = None,
     features: list[int] | None = None,
+    dataset_dir: Path | str | None = None,
+    logs_dir: Path | str | None = None,
 ) -> dict:
     """Spawn a single agent on a feature using the agent framework adapter.
 
     Args:
         agent_config: Path to agent-specific configuration file (optional)
         coop_protocol_path: Path to cooperation protocol prompt for mini_swe_agent (optional)
+        dataset_dir: Root of the dataset tree.  Defaults to ``./dataset``.
+        logs_dir: Root to write run logs under.  Defaults to ``./logs``.
     """
-    task_dir = Path("dataset") / repo_name / f"task{task_id}"
+    root = Path(dataset_dir) if dataset_dir is not None else DEFAULT_DATASET_DIR
+    task_dir = root / repo_name / f"task{task_id}"
+    logs_root = Path(logs_dir) if logs_dir is not None else DEFAULT_LOGS_DIR
     feature_file = task_dir / f"feature{feature_id}" / "feature.md"
 
     if not feature_file.exists():
@@ -278,7 +292,7 @@ def _spawn_agent(
     log_dir_path = None
     if run_name and features:
         feature_str = "_".join(f"f{f}" for f in sorted(features))
-        log_dir_path = str(Path("logs") / run_name / "coop" / repo_name / str(task_id) / feature_str)
+        log_dir_path = str(logs_root / run_name / "coop" / repo_name / str(task_id) / feature_str)
 
     if not quiet:
         console.print(f"  [dim]{agent_id}[/dim] starting...")

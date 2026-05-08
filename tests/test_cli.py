@@ -14,37 +14,37 @@ class TestGenerateRunName:
     def test_basic_name_generation(self):
         """Test basic run name generation."""
         name = _generate_run_name("solo", "gpt-4o")
-        assert name == "solo-msa-gpt-4o"
+        assert name == "solo-msa_v2-gpt-4o"
 
     def test_name_generation_with_provider(self):
         """Test that provider is included in auto-generated names."""
         name = _generate_run_name("solo", "gpt-4o", provider="azure")
-        assert name == "solo-msa-azure-gpt-4o"
+        assert name == "solo-msa_v2-azure-gpt-4o"
 
     def test_with_subset(self):
         """Test name generation with subset."""
         name = _generate_run_name("solo", "gpt-4o", subset="lite")
-        assert name == "solo-msa-gpt-4o-lite"
+        assert name == "solo-msa_v2-gpt-4o-lite"
 
     def test_with_repo(self):
         """Test name generation with repo filter."""
         name = _generate_run_name("coop", "gpt-4o", repo="llama_index_task")
-        assert name == "coop-msa-gpt-4o-llama-index"
+        assert name == "coop-msa_v2-gpt-4o-llama-index"
 
     def test_with_task(self):
         """Test name generation with task filter."""
         name = _generate_run_name("solo", "gpt-4o", repo="pillow_task", task=25)
-        assert name == "solo-msa-gpt-4o-pillow-25"
+        assert name == "solo-msa_v2-gpt-4o-pillow-25"
 
     def test_with_task_zero(self):
         """Test name generation with task ID 0 (valid task ID)."""
         name = _generate_run_name("solo", "gpt-4o", repo="openai_tiktoken_task", task=0)
-        assert name == "solo-msa-gpt-4o-openai-tiktoken-0"
+        assert name == "solo-msa_v2-gpt-4o-openai-tiktoken-0"
 
     def test_with_all_options(self):
         """Test name generation with all options."""
         name = _generate_run_name("coop", "gemini/gemini-3-flash-preview", subset="lite", repo="pillow_task", task=25)
-        assert name == "coop-msa-gemini-3-flash-lite-pillow-25"
+        assert name == "coop-msa_v2-gemini-3-flash-lite-pillow-25"
 
     def test_cleans_model_name(self):
         """Test that model names are cleaned."""
@@ -63,8 +63,8 @@ class TestGenerateRunName:
         """Test coop vs solo settings."""
         solo_name = _generate_run_name("solo", "gpt-4o")
         coop_name = _generate_run_name("coop", "gpt-4o")
-        assert solo_name.startswith("solo-msa-")
-        assert coop_name.startswith("coop-msa-")
+        assert solo_name.startswith("solo-msa_v2-")
+        assert coop_name.startswith("coop-msa_v2-")
 
 
 class TestCLI:
@@ -123,7 +123,7 @@ class TestCLI:
         assert kwargs["llm_api_version"] == "2024-12-01-preview"
 
     def test_cli_run_passes_coop_protocol_path(self):
-        """Test run subcommand forwards mini_swe_agent protocol path."""
+        """Test run subcommand forwards mini_swe_agent_v2 protocol path."""
         from cooperbench.cli import main
 
         argv = [

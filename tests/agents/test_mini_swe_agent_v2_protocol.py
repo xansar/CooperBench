@@ -9,6 +9,7 @@ from cooperbench.agents.mini_swe_agent_v2.adapter import MiniSweAgentV2Runner
 
 def _agent_config(system_template: str = "base system") -> dict:
     return {
+        "backend": "modal",
         "agent": {
             "system_template": system_template,
             "instance_template": "instance {{ task }}",
@@ -43,6 +44,7 @@ def _run_with_mocks(config: dict | None = None, default_config: dict | None = No
                             mock_agent.return_value.n_calls = 0
                             mock_agent.return_value.messages = []
                             mock_agent.return_value.sent_messages = []
+                            mock_agent.return_value._compaction_count = 0
                             runner = MiniSweAgentV2Runner()
                             result = runner.run(
                                 task="task body",

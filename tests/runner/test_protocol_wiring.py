@@ -21,7 +21,7 @@ def test_spawn_solo_agent_adds_coop_protocol_path_to_config(tmp_path, monkeypatc
                 repo_name="test_repo",
                 task_id=1,
                 features=[1],
-                agent_name="mini_swe_agent",
+                agent_name="mini_swe_agent_v2",
                 model_name="gpt-4o",
                 coop_protocol_path="protocol.txt",
             )
