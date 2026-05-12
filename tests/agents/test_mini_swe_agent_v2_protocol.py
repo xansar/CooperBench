@@ -62,16 +62,16 @@ def test_coop_protocol_none_leaves_system_template_unchanged():
     assert kwargs["system_template"] == "base system"
 
 
-def test_coop_protocol_appends_raw_block(tmp_path):
+def test_coop_protocol_appends_raw_content(tmp_path):
     protocol = tmp_path / "protocol.txt"
-    protocol.write_text("coordinate before submitting")
+    protocol.write_text("<custom_protocol>\ncoordinate before submitting\n</custom_protocol>")
 
     _, mock_agent = _run_with_mocks(config={"coop_protocol_path": str(protocol)})
 
     _, kwargs = mock_agent.call_args
     assert kwargs["system_template"] == (
         "base system\n\n"
-        "<cooperation_protocol>\ncoordinate before submitting\n</cooperation_protocol>"
+        "<custom_protocol>\ncoordinate before submitting\n</custom_protocol>"
     )
 
 

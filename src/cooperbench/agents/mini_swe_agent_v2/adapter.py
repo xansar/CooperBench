@@ -208,7 +208,7 @@ class MiniSweAgentV2Runner:
         agent_cfg: dict,
         protocol_path: str | None,
     ) -> None:
-        """Append a cooperation protocol block to mini_swe_agent_v2's system template."""
+        """Append cooperation protocol content to mini_swe_agent_v2's system template."""
         if not protocol_path:
             return
 
@@ -220,7 +220,4 @@ class MiniSweAgentV2Runner:
         if protocol == "":
             return
 
-        agent_cfg["system_template"] = (
-            f"{agent_cfg['system_template']}\n\n"
-            f"<cooperation_protocol>\n{protocol}\n</cooperation_protocol>"
-        )
+        agent_cfg["system_template"] = f"{agent_cfg['system_template']}\n\n{protocol}"

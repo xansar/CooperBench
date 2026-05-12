@@ -4,9 +4,9 @@
 #   2. coop without protocol prompt
 #   3. coop with protocol prompt
 #
-# Results are grouped under logs/outlines-exp/.
+# Results are grouped under logs/outlines-transition-exp/.
 #
-# Defaults run the full Outlines repository task set.
+# Defaults run the Outlines prompt-transition subset.
 #
 # Usage:
 #   ./scripts/run_outlines_gpt54_v2_three_experiments.sh --force --no-auto-eval
@@ -22,18 +22,25 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-BASE_SCRIPT="$SCRIPT_DIR/run_outlines_gpt54_v2_transition_protocol_experiment.sh"
+BASELINE_SCRIPT="$SCRIPT_DIR/run_outlines_gpt54_v2_transition_subset.sh"
+PROTOCOL_SCRIPT="$SCRIPT_DIR/run_outlines_gpt54_v2_transition_subset_protocol.sh"
 
+SUBSET="${SUBSET:-outlines_prompt_transitions}"
 TASK_ID="${TASK_ID:-}"
 FEATURES="${FEATURES:-}"
-CONCURRENCY="${CONCURRENCY:-1}"
-EVAL_CONCURRENCY="${EVAL_CONCURRENCY:-1}"
+CONCURRENCY="${CONCURRENCY:-2}"
+EVAL_CONCURRENCY="${EVAL_CONCURRENCY:-2}"
 COOP_PROTOCOL_PATH="${COOP_PROTOCOL_PATH:-$PROJECT_DIR/scripts/prompts/cooperation_protocol.jinja}"
 
 cd "$PROJECT_DIR"
 
-if [ ! -x "$BASE_SCRIPT" ]; then
-    echo "Error: base script is not executable: $BASE_SCRIPT" >&2
+if [ ! -x "$BASELINE_SCRIPT" ]; then
+    echo "Error: baseline script is not executable: $BASELINE_SCRIPT" >&2
+    exit 1
+fi
+
+if [ ! -x "$PROTOCOL_SCRIPT" ]; then
+    echo "Error: protocol script is not executable: $PROTOCOL_SCRIPT" >&2
     exit 1
 fi
 
@@ -41,23 +48,25 @@ run_experiment() {
     local folder="$1"
     local setting="$2"
     local protocol_path="$3"
-    shift 3
+    local runner_script="$4"
+    shift 4
 
     echo
-    echo "=== outlines-exp/$folder ($setting) ==="
-    RUN_NAME="outlines-exp/$folder" \
+    echo "=== outlines-transition-exp/$folder ($setting; subset=$SUBSET) ==="
+    RUN_NAME="outlines-transition-exp/$folder" \
+    SUBSET="$SUBSET" \
     SETTING="$setting" \
     TASK_ID="$TASK_ID" \
     FEATURES="$FEATURES" \
     CONCURRENCY="$CONCURRENCY" \
     EVAL_CONCURRENCY="$EVAL_CONCURRENCY" \
     COOP_PROTOCOL_PATH="$protocol_path" \
-    "$BASE_SCRIPT" "$@"
+    "$runner_script" "$@"
 }
 
-run_experiment "solo" "solo" "" "$@"
-run_experiment "coop" "coop" "" "$@"
-run_experiment "coop_prompt" "coop" "$COOP_PROTOCOL_PATH" "$@"
+run_experiment "solo" "solo" "" "$BASELINE_SCRIPT" "$@"
+run_experiment "coop" "coop" "" "$BASELINE_SCRIPT" "$@"
+run_experiment "coop_prompt" "coop" "$COOP_PROTOCOL_PATH" "$PROTOCOL_SCRIPT" "$@"
 
 echo
-echo "Logs written under: $PROJECT_DIR/logs/outlines-exp"
+echo "Logs written under: $PROJECT_DIR/logs/outlines-transition-exp"
